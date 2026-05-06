@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -104,18 +106,31 @@ private val GradeColors = listOf(
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-internal fun TrackelateApp(viewModel: JournalViewModel) {
+internal fun TrackelateApp(
+    viewModel: JournalViewModel,
+    launchTarget: NotificationLaunchTarget?,
+    onLaunchTargetConsumed: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var showReminderTimeDialog by rememberSaveable { mutableStateOf(false) }
+    var pendingLaunchTarget by remember { mutableStateOf<NotificationLaunchTarget?>(null) }
 
     LaunchedEffect(state.message) {
         state.message?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearMessage()
+        }
+    }
+
+    LaunchedEffect(launchTarget) {
+        launchTarget?.let {
+            viewModel.selectDate(it.date)
+            pagerState.scrollToPage(0)
+            pendingLaunchTarget = it
         }
     }
 
@@ -175,6 +190,11 @@ internal fun TrackelateApp(viewModel: JournalViewModel) {
                             onQuantityChanged = viewModel::updateQuantity,
                             onDeleteQuantity = viewModel::deleteQuantity,
                             onAddQuantity = viewModel::addQuantity,
+                            launchTarget = pendingLaunchTarget,
+                            onLaunchTargetConsumed = {
+                                pendingLaunchTarget = null
+                                onLaunchTargetConsumed()
+                            },
                         )
                         else -> AnalyticsPage(state)
                     }
@@ -262,6 +282,7 @@ private fun ReminderPill(time: LocalTime, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TrackelateJournalPage(
     state: JournalUiState,
@@ -274,10 +295,20 @@ private fun TrackelateJournalPage(
     onQuantityChanged: (LocalDate, String, String) -> Unit,
     onDeleteQuantity: (String) -> Unit,
     onAddQuantity: (String, String, String?) -> Unit,
+    launchTarget: NotificationLaunchTarget?,
+    onLaunchTargetConsumed: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
     val selectedDay = state.days.firstOrNull { it.date == state.selectedDate } ?: JournalDay(state.selectedDate)
     var showQuantityDialog by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(launchTarget?.date) {
+        if (launchTarget != null) {
+            bringIntoViewRequester.bringIntoView()
+            onLaunchTargetConsumed()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -304,6 +335,7 @@ private fun TrackelateJournalPage(
             onDescriptionChanged = onDescriptionChanged,
             onQuantityChanged = onQuantityChanged,
             onDeleteQuantity = onDeleteQuantity,
+            modifier = Modifier.bringIntoViewRequester(bringIntoViewRequester),
         )
 
         Spacer(Modifier.height(2.dp))
@@ -437,8 +469,12 @@ private fun TrackelateDayDetails(
     onDescriptionChanged: (LocalDate, String) -> Unit,
     onQuantityChanged: (LocalDate, String, String) -> Unit,
     onDeleteQuantity: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
