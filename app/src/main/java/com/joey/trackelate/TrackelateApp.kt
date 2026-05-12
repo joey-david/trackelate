@@ -118,6 +118,9 @@ internal fun TrackelateApp(
     val context = LocalContext.current
     var showReminderTimeDialog by rememberSaveable { mutableStateOf(false) }
     var pendingLaunchTarget by remember { mutableStateOf<NotificationLaunchTarget?>(null) }
+    val activityImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::importActivityData)
+    }
 
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -196,6 +199,15 @@ internal fun TrackelateApp(
                             onQuantityChanged = viewModel::updateQuantity,
                             onDeleteQuantity = viewModel::deleteQuantity,
                             onAddQuantity = viewModel::addQuantity,
+                            onImportActivityData = {
+                                activityImportLauncher.launch(
+                                    arrayOf(
+                                        "text/*",
+                                        "application/zip",
+                                        "application/octet-stream",
+                                    ),
+                                )
+                            },
                             launchTarget = pendingLaunchTarget,
                             onLaunchTargetConsumed = {
                                 pendingLaunchTarget = null
@@ -304,6 +316,7 @@ private fun TrackelateJournalPage(
     onQuantityChanged: (LocalDate, String, String) -> Unit,
     onDeleteQuantity: (String) -> Unit,
     onAddQuantity: (String, String, String?) -> Unit,
+    onImportActivityData: () -> Unit,
     launchTarget: NotificationLaunchTarget?,
     onLaunchTargetConsumed: () -> Unit,
 ) {
@@ -348,14 +361,26 @@ private fun TrackelateJournalPage(
         )
 
         Spacer(Modifier.height(2.dp))
-        Button(
-            onClick = { showQuantityDialog = true },
-            shape = RectangleShape,
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Rounded.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Add quantity")
+            Button(
+                onClick = onImportActivityData,
+                shape = RectangleShape,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Import activity")
+            }
+            Button(
+                onClick = { showQuantityDialog = true },
+                shape = RectangleShape,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Add quantity")
+            }
         }
     }
 

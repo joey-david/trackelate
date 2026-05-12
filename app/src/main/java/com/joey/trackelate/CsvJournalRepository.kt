@@ -55,6 +55,55 @@ internal class CsvJournalRepository(context: Context) {
         writeSettings(snapshot.notificationTime)
     }
 
+    fun importActivityData(currentSnapshot: JournalSnapshot, imported: ImportedActivityData): Pair<JournalSnapshot, ActivityImportSummary> {
+        val entries = ensureImportEntries(currentSnapshot.entries)
+        val keyByField = ImportField.values().associateWith { field ->
+            entries.first { entry ->
+                entry.name.equals(field.displayName, ignoreCase = true) ||
+                    field.aliases.any { alias -> entry.name.equals(alias, ignoreCase = true) }
+            }.columnKey
+        }
+
+        val dayByDate = currentSnapshot.days.associateBy { it.date }.toMutableMap()
+        var updatedValueCount = 0
+
+        imported.days.forEach { (date, importedDay) ->
+            val existingDay = dayByDate[date] ?: JournalDay(date = date)
+            val values = existingDay.values.toMutableMap()
+
+            importedDay.clears.forEach { field ->
+                keyByField[field]?.let { key ->
+                    if (values.remove(key) != null) {
+                        updatedValueCount += 1
+                    }
+                }
+            }
+
+            importedDay.valuesByField().forEach { (field, value) ->
+                keyByField[field]?.let { key ->
+                    if (shouldWriteImportedValue(imported.kind, field, values[key]) && values[key] != value) {
+                        values[key] = value
+                        updatedValueCount += 1
+                    }
+                }
+            }
+
+            dayByDate[date] = existingDay.copy(values = values)
+        }
+
+        val next = JournalSnapshot(
+            entries = entries,
+            days = dayByDate.values.sortedBy { it.date },
+            notificationTime = currentSnapshot.notificationTime,
+        )
+        return next to ActivityImportSummary(
+            dayCount = imported.days.size,
+            updatedValueCount = updatedValueCount,
+            sourceSummary = imported.sourceSummary,
+            warnings = imported.warnings,
+        )
+    }
+
     private fun ensureFiles() {
         if (!entriesFile.exists()) {
             entriesFile.writeText("id,name,unit,active,order\n")
@@ -395,6 +444,43 @@ internal class CsvJournalRepository(context: Context) {
         return nextEntries.sortedBy { it.order }
     }
 
+    private fun ensureImportEntries(entries: List<QuantityEntry>): List<QuantityEntry> {
+        val nextEntries = entries.toMutableList()
+        var nextOrder = nextEntries.maxOfOrNull { it.order }?.plus(1) ?: 0
+
+        ImportField.values().forEach { field ->
+            val existingIndex = nextEntries.indexOfFirst { entry ->
+                entry.name.equals(field.displayName, ignoreCase = true) ||
+                    field.aliases.any { alias -> entry.name.equals(alias, ignoreCase = true) }
+            }
+            if (existingIndex >= 0) {
+                val existing = nextEntries[existingIndex]
+                nextEntries[existingIndex] = existing.copy(
+                    name = field.displayName,
+                    unit = field.unit,
+                    active = true,
+                )
+            } else {
+                val key = uniqueColumnKey(field.displayName, nextEntries.map { it.columnKey }.toSet())
+                nextEntries += QuantityEntry(
+                    columnKey = key,
+                    name = field.displayName,
+                    unit = field.unit,
+                    active = true,
+                    order = nextOrder++,
+                )
+            }
+        }
+
+        return nextEntries.sortedBy { it.order }
+    }
+
+    private fun shouldWriteImportedValue(kind: ActivityImportKind, field: ImportField, existingValue: String?): Boolean {
+        if (kind != ActivityImportKind.GOOGLE_FIT_TAKEOUT) return true
+        if (existingValue.isNullOrBlank() || existingValue == "NaN") return true
+        return field !in MANUAL_WORKOUT_DETAIL_FIELDS
+    }
+
     companion object {
         private const val ENTRIES_FILE = "journal_entries.csv"
         private const val DAYS_FILE = "journal_days.csv"
@@ -408,6 +494,13 @@ internal class CsvJournalRepository(context: Context) {
             SeedEntry("time exercising", "time"),
             SeedEntry("time spent socializing irl", "time"),
             SeedEntry("wake up time", "time"),
+        )
+        private val MANUAL_WORKOUT_DETAIL_FIELDS = setOf(
+            ImportField.RUNNING_TIME,
+            ImportField.RUNNING_DISTANCE,
+            ImportField.GYM_TIME,
+            ImportField.GYM_SETS,
+            ImportField.GYM_VOLUME,
         )
     }
 }

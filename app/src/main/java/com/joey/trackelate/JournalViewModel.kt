@@ -1,6 +1,8 @@
 package com.joey.trackelate
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -123,6 +125,28 @@ internal class JournalViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
+    fun importActivityData(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            runCatching {
+                val fileName = app.contentResolver.displayName(uri) ?: uri.lastPathSegment.orEmpty()
+                val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("Could not read selected file")
+                val imported = ActivityDataImporter.parse(fileName, bytes)
+                val current = repository.loadSnapshot()
+                val (next, summary) = repository.importActivityData(current, imported)
+                repository.saveSnapshot(next)
+                next.toUiState(_state.value).copy(
+                    message = buildImportMessage(summary),
+                )
+            }.onSuccess { state ->
+                _state.value = state
+            }.onFailure { error ->
+                _state.value = _state.value.copy(message = error.message ?: "Import failed")
+            }
+        }
+    }
+
 private fun commitChange(transform: (JournalSnapshot) -> JournalSnapshot) {
         val snapshot = _state.value.toSnapshot()
         val next = transform(snapshot)
@@ -152,6 +176,22 @@ private fun commitChange(transform: (JournalSnapshot) -> JournalSnapshot) {
         days = days,
         notificationTime = notificationTime,
     )
+
+    private fun android.content.ContentResolver.displayName(uri: Uri): String? {
+        return query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun buildImportMessage(summary: ActivityImportSummary): String {
+        val warningSuffix = summary.warnings.firstOrNull()?.let { " $it" }.orEmpty()
+        return "Imported ${summary.updatedValueCount} values across ${summary.dayCount} days. ${summary.sourceSummary}.$warningSuffix"
+            .take(240)
+    }
 }
 
 internal fun isAllowedReminderTime(time: LocalTime): Boolean {
