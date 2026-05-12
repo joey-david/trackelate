@@ -35,6 +35,14 @@ internal class CsvJournalRepository(context: Context) {
             changed = true
         }
 
+        if (!prefs.getBoolean(KEY_CLEARED_IMPORTED_NEUTRAL_GRADES, false)) {
+            days.replaceAll { day ->
+                if (day.date.isBefore(IMPORTED_NEUTRAL_GRADE_CUTOFF)) day.copy(grade = null) else day
+            }
+            prefs.edit().putBoolean(KEY_CLEARED_IMPORTED_NEUTRAL_GRADES, true).apply()
+            changed = true
+        }
+
         val snapshot = JournalSnapshot(
             entries = entries,
             days = days.sortedBy { it.date },
@@ -166,7 +174,7 @@ internal class CsvJournalRepository(context: Context) {
             val cells = parseCsvLine(line)
             if (cells.size < 3) return@mapNotNull null
             val date = LocalDate.parse(cells[0])
-            val grade = cells.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 6) ?: 3
+            val grade = cells.getOrNull(1)?.takeUnless { it.isBlank() || it == "NaN" }?.toIntOrNull()?.coerceIn(0, 6)
             val description = cells.getOrNull(2).orEmpty()
             val values = customKeys
                 .filter { it in keySet }
@@ -190,7 +198,7 @@ internal class CsvJournalRepository(context: Context) {
             days.forEach { day ->
                 val row = buildList {
                     add(day.date.toString())
-                    add(day.grade.coerceIn(0, 6).toString())
+                    add(day.grade?.coerceIn(0, 6)?.toString().orEmpty())
                     add(day.description.replace('\n', ' ').take(140))
                     entryKeys.forEach { key -> add(day.values[key].orNaN()) }
                 }
@@ -472,6 +480,19 @@ internal class CsvJournalRepository(context: Context) {
             }
         }
 
+        val activeImportNames = ImportField.values()
+            .flatMap { listOf(it.displayName) + it.aliases }
+            .map { it.lowercase(Locale.US) }
+            .toSet()
+        nextEntries.replaceAll { entry ->
+            val normalized = entry.name.lowercase(Locale.US)
+            if (normalized in OBSOLETE_IMPORT_FIELD_NAMES && normalized !in activeImportNames) {
+                entry.copy(active = false)
+            } else {
+                entry
+            }
+        }
+
         return nextEntries.sortedBy { it.order }
     }
 
@@ -487,7 +508,9 @@ internal class CsvJournalRepository(context: Context) {
         private const val SETTINGS_FILE = "journal_settings.csv"
         private const val PREFS_NAME = "trackelate_settings"
         private const val KEY_NOTIFICATION_TIME = "notification_time"
+        private const val KEY_CLEARED_IMPORTED_NEUTRAL_GRADES = "cleared_imported_neutral_grades_before_2026_05_01"
         private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+        private val IMPORTED_NEUTRAL_GRADE_CUTOFF: LocalDate = LocalDate.of(2026, 5, 1)
         private val DEFAULT_ENTRIES = listOf(
             SeedEntry("number of steps", "dimensionless"),
             SeedEntry("time slept previous night", "time"),
@@ -496,11 +519,18 @@ internal class CsvJournalRepository(context: Context) {
             SeedEntry("wake up time", "time"),
         )
         private val MANUAL_WORKOUT_DETAIL_FIELDS = setOf(
-            ImportField.RUNNING_TIME,
-            ImportField.RUNNING_DISTANCE,
-            ImportField.GYM_TIME,
-            ImportField.GYM_SETS,
-            ImportField.GYM_VOLUME,
+            ImportField.CARDIO_TIME,
+            ImportField.STRENGTH_TIME,
+        )
+        private val OBSOLETE_IMPORT_FIELD_NAMES = setOf(
+            "running distance",
+            "gym sets",
+            "gym volume",
+            "time spent running",
+            "time spent working out in gym",
+            "time biking",
+            "time walking",
+            "time playing tennis",
         )
     }
 }

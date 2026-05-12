@@ -32,48 +32,34 @@ internal enum class ActivityImportKind {
 }
 
 internal data class ImportedActivityDay(
-    val steps: Int? = null,
+    val stepsOutsideRunning: Int? = null,
     val sleepSeconds: Long? = null,
-    val runningSeconds: Long? = null,
-    val runningKilometers: Double? = null,
-    val gymSeconds: Long? = null,
-    val gymSets: Int? = null,
-    val gymVolume: Double? = null,
-    val bikingSeconds: Long? = null,
-    val walkingSeconds: Long? = null,
-    val tennisSeconds: Long? = null,
+    val wakeUpSeconds: Long? = null,
+    val cardioSeconds: Long? = null,
+    val strengthSeconds: Long? = null,
+    val extraEvents: Int? = null,
+    val runningSteps: Int? = null,
     val clears: Set<ImportField> = emptySet(),
 ) {
     fun mergedWith(other: ImportedActivityDay): ImportedActivityDay = ImportedActivityDay(
-        steps = other.steps ?: steps,
+        stepsOutsideRunning = other.stepsOutsideRunning ?: stepsOutsideRunning,
         sleepSeconds = other.sleepSeconds ?: sleepSeconds,
-        runningSeconds = sumLong(runningSeconds, other.runningSeconds),
-        runningKilometers = sumDouble(runningKilometers, other.runningKilometers),
-        gymSeconds = sumLong(gymSeconds, other.gymSeconds),
-        gymSets = sumInt(gymSets, other.gymSets),
-        gymVolume = sumDouble(gymVolume, other.gymVolume),
-        bikingSeconds = sumLong(bikingSeconds, other.bikingSeconds),
-        walkingSeconds = sumLong(walkingSeconds, other.walkingSeconds),
-        tennisSeconds = sumLong(tennisSeconds, other.tennisSeconds),
+        wakeUpSeconds = other.wakeUpSeconds ?: wakeUpSeconds,
+        cardioSeconds = sumLong(cardioSeconds, other.cardioSeconds),
+        strengthSeconds = sumLong(strengthSeconds, other.strengthSeconds),
+        extraEvents = sumInt(extraEvents, other.extraEvents),
+        runningSteps = sumInt(runningSteps, other.runningSteps),
         clears = clears + other.clears,
     )
 
     fun valuesByField(): Map<ImportField, String> = buildMap {
-        steps?.takeIf { it > 0 }?.let { put(ImportField.STEPS, it.toString()) }
+        stepsOutsideRunning?.takeIf { it > 0 }?.let { put(ImportField.STEPS_OUTSIDE_RUNNING, it.toString()) }
         sleepSeconds?.takeIf { it > 0 }?.let { put(ImportField.SLEEP, secondsToDuration(it)) }
-        runningSeconds?.takeIf { it > 0 }?.let { put(ImportField.RUNNING_TIME, secondsToDuration(it)) }
-        runningKilometers?.takeIf { it > 0.0 }?.let { put(ImportField.RUNNING_DISTANCE, formatNumber(it)) }
-        gymSeconds?.takeIf { it > 0 }?.let { put(ImportField.GYM_TIME, secondsToDuration(it)) }
-        gymSets?.takeIf { it > 0 }?.let { put(ImportField.GYM_SETS, it.toString()) }
-        gymVolume?.takeIf { it > 0.0 }?.let { put(ImportField.GYM_VOLUME, formatNumber(it)) }
-        exerciseSeconds().takeIf { it > 0 }?.let { put(ImportField.EXERCISE_TIME, secondsToDuration(it)) }
-        bikingSeconds?.takeIf { it > 0 }?.let { put(ImportField.BIKING_TIME, secondsToDuration(it)) }
-        walkingSeconds?.takeIf { it > 0 }?.let { put(ImportField.WALKING_TIME, secondsToDuration(it)) }
-        tennisSeconds?.takeIf { it > 0 }?.let { put(ImportField.TENNIS_TIME, secondsToDuration(it)) }
+        wakeUpSeconds?.takeIf { it >= 0 }?.let { put(ImportField.WAKE_UP_TIME, secondsToDuration(it)) }
+        cardioSeconds?.takeIf { it > 0 }?.let { put(ImportField.CARDIO_TIME, secondsToDuration(it)) }
+        strengthSeconds?.takeIf { it > 0 }?.let { put(ImportField.STRENGTH_TIME, secondsToDuration(it)) }
+        extraEvents?.takeIf { it > 0 }?.let { put(ImportField.EXTRA_EVENTS, it.toString()) }
     }
-
-    private fun exerciseSeconds(): Long =
-        listOfNotNull(runningSeconds, gymSeconds, bikingSeconds, tennisSeconds).sum()
 
     private fun sumLong(left: Long?, right: Long?): Long? = when {
         left == null -> right
@@ -87,11 +73,6 @@ internal data class ImportedActivityDay(
         else -> left + right
     }
 
-    private fun sumDouble(left: Double?, right: Double?): Double? = when {
-        left == null -> right
-        right == null -> left
-        else -> left + right
-    }
 }
 
 internal enum class ImportField(
@@ -99,17 +80,13 @@ internal enum class ImportField(
     val unit: String,
     val aliases: Set<String> = emptySet(),
 ) {
-    STEPS("steps", "dimensionless", setOf("number of steps")),
-    SLEEP("sleep", "time", setOf("time slept previous night")),
-    EXERCISE_TIME("time exercising", "time"),
-    RUNNING_TIME("time spent running", "time"),
-    RUNNING_DISTANCE("running distance", "km"),
-    GYM_TIME("time spent working out in gym", "time"),
-    GYM_SETS("gym sets", "dimensionless"),
-    GYM_VOLUME("gym volume", "kg reps"),
-    BIKING_TIME("time biking", "time"),
-    WALKING_TIME("time walking", "time"),
-    TENNIS_TIME("time playing tennis", "time"),
+    STEPS_OUTSIDE_RUNNING("steps outside of running", "dimensionless", setOf("steps", "number of steps")),
+    CARDIO_TIME("cardio time", "time", setOf("time exercising", "time spent running", "time biking")),
+    STRENGTH_TIME("strength training time", "time", setOf("time spent working out in gym")),
+    SLEEP("time slept", "time", setOf("sleep", "time slept previous night")),
+    WAKE_UP_TIME("wake up time", "time"),
+    SOCIAL_TIME("time spent socializing", "time", setOf("time spent socializing irl")),
+    EXTRA_EVENTS("extra events", "dimensionless", setOf("number of extra events")),
 }
 
 internal object ActivityDataImporter {
@@ -145,47 +122,32 @@ internal object ActivityDataImporter {
             val start = parseWorkoutTime(key.startTime) ?: return@forEach
             val end = parseWorkoutTime(key.endTime) ?: start
             val date = start.toLocalDate()
-            var runningSeconds = 0L
-            var runningKm = 0.0
-            var gymSets = 0
-            var gymVolume = 0.0
+            var cardioSeconds = 0L
             var hasGymWork = false
 
             workoutRows.forEach { row ->
                 val exercise = row["exercise_title"].orEmpty()
                 if (exercise.equals("Running", ignoreCase = true)) {
-                    runningSeconds += row["duration_seconds"].orEmpty().toDoubleOrNull()?.roundToLong() ?: 0L
-                    runningKm += row["distance_km"].orEmpty().toDoubleOrNull() ?: 0.0
+                    cardioSeconds += row["duration_seconds"].orEmpty().toDoubleOrNull()?.roundToLong() ?: 0L
                 } else {
                     hasGymWork = true
-                    if (!row["set_type"].orEmpty().equals("warmup", ignoreCase = true)) {
-                        gymSets += 1
-                    }
-                    val weight = row["weight_kg"].orEmpty().toDoubleOrNull()
-                    val reps = row["reps"].orEmpty().toDoubleOrNull()
-                    if (weight != null && reps != null) {
-                        gymVolume += weight * reps
-                    }
                 }
             }
 
-            if (runningSeconds == 0L && runningKm > 0.0) {
-                runningSeconds = (end.atZone(zone).toEpochSecond() - start.atZone(zone).toEpochSecond()).coerceAtLeast(0)
+            if (cardioSeconds == 0L && workoutRows.any { it["exercise_title"].orEmpty().equals("Running", ignoreCase = true) }) {
+                cardioSeconds = (end.atZone(zone).toEpochSecond() - start.atZone(zone).toEpochSecond()).coerceAtLeast(0)
             }
-            val gymSeconds = if (hasGymWork) {
+            val strengthSeconds = if (hasGymWork) {
                 (end.atZone(zone).toEpochSecond() - start.atZone(zone).toEpochSecond()).coerceAtLeast(0)
             } else {
                 0L
             }
 
             val imported = ImportedActivityDay(
-                runningSeconds = runningSeconds.takeIf { it > 0 },
-                runningKilometers = runningKm.takeIf { it > 0.0 },
-                gymSeconds = gymSeconds.takeIf { it > 0 },
-                gymSets = gymSets.takeIf { it > 0 },
-                gymVolume = gymVolume.takeIf { it > 0.0 },
-                clears = if (runningSeconds > 0 && !hasGymWork) {
-                    setOf(ImportField.GYM_TIME, ImportField.GYM_SETS, ImportField.GYM_VOLUME)
+                cardioSeconds = cardioSeconds.takeIf { it > 0 },
+                strengthSeconds = strengthSeconds.takeIf { it > 0 },
+                clears = if (cardioSeconds > 0 && !hasGymWork) {
+                    setOf(ImportField.STRENGTH_TIME)
                 } else {
                     emptySet()
                 },
@@ -229,11 +191,19 @@ internal object ActivityDataImporter {
         val days = sessionDays.toMutableMap()
         val stepChoice = stepCandidates.minByOrNull { it.priority }
         stepChoice?.days?.forEach { (date, steps) ->
-            days[date] = days[date]?.copy(steps = steps) ?: ImportedActivityDay(steps = steps)
+            val existing = days[date]
+            val outsideRunning = (steps - (existing?.runningSteps ?: 0)).coerceAtLeast(0)
+            days[date] = existing?.copy(stepsOutsideRunning = outsideRunning) ?: ImportedActivityDay(stepsOutsideRunning = outsideRunning)
         }
         val sleepChoice = sleepCandidates.minByOrNull { it.priority }
-        sleepChoice?.days?.forEach { (date, seconds) ->
-            days[date] = days[date]?.copy(sleepSeconds = seconds) ?: ImportedActivityDay(sleepSeconds = seconds)
+        sleepChoice?.days?.forEach { (date, sleep) ->
+            days[date] = days[date]?.copy(
+                sleepSeconds = sleep.sleepSeconds,
+                wakeUpSeconds = sleep.wakeUpSeconds,
+            ) ?: ImportedActivityDay(
+                sleepSeconds = sleep.sleepSeconds,
+                wakeUpSeconds = sleep.wakeUpSeconds,
+            )
         }
 
         val warnings = buildList {
@@ -266,7 +236,7 @@ internal object ActivityDataImporter {
                 ParsedAllData.Steps(source, daily)
             }
             source.contains("sleep.segment") -> {
-                val daily = mutableMapOf<LocalDate, Long>()
+                val daily = mutableMapOf<LocalDate, SleepDay>()
                 for (index in 0 until points.length()) {
                     val point = points.optJSONObject(index) ?: continue
                     val state = point.intFitValue()
@@ -275,7 +245,12 @@ internal object ActivityDataImporter {
                     val end = instantFromNanos(point.optLong("endTimeNanos")).atZone(zone)
                     val date = if (end.hour < 12) end.toLocalDate() else start.toLocalDate()
                     val seconds = (end.toEpochSecond() - start.toEpochSecond()).coerceAtLeast(0)
-                    daily[date] = (daily[date] ?: 0L) + seconds
+                    val previous = daily[date]
+                    val wakeUpSeconds = if (end.hour < 12) end.toLocalTime().toSecondOfDay().toLong() else previous?.wakeUpSeconds
+                    daily[date] = SleepDay(
+                        sleepSeconds = (previous?.sleepSeconds ?: 0L) + seconds,
+                        wakeUpSeconds = listOfNotNull(previous?.wakeUpSeconds, wakeUpSeconds).maxOrNull(),
+                    )
                 }
                 ParsedAllData.Sleep(source, daily)
             }
@@ -291,14 +266,15 @@ internal object ActivityDataImporter {
             ?: end?.let { (it.epochSecond - start.epochSecond).coerceAtLeast(0) }
             ?: return null
         val date = start.atZone(zone).toLocalDate()
+        val hasRunningSegment = activity == "running" || json.hasSegmentActivity("running")
+        val runningSteps = if (hasRunningSegment) json.aggregateIntValue("com.google.step_count.delta") else null
         val day = when (activity) {
-            "running" -> ImportedActivityDay(runningSeconds = seconds)
-            "strength_training" -> ImportedActivityDay(gymSeconds = seconds)
-            "biking" -> ImportedActivityDay(bikingSeconds = seconds)
-            "walking", "walking.paced" -> ImportedActivityDay(walkingSeconds = seconds)
-            "tennis" -> ImportedActivityDay(tennisSeconds = seconds)
-            else -> null
-        } ?: return null
+            "running" -> ImportedActivityDay(cardioSeconds = seconds, runningSteps = runningSteps)
+            "biking" -> ImportedActivityDay(cardioSeconds = seconds)
+            "strength_training" -> ImportedActivityDay(strengthSeconds = seconds)
+            "walking", "walking.paced", "sleep" -> return null
+            else -> ImportedActivityDay(extraEvents = 1)
+        }
         return date to day
     }
 
@@ -324,6 +300,29 @@ internal object ActivityDataImporter {
             fitValue.has("fpVal") -> fitValue.optDouble("fpVal").roundToInt()
             else -> 0
         }
+    }
+
+    private fun JSONObject.aggregateIntValue(metricName: String): Int? {
+        val aggregate = optJSONArray("aggregate") ?: return null
+        for (index in 0 until aggregate.length()) {
+            val metric = aggregate.optJSONObject(index) ?: continue
+            if (metric.optString("metricName") == metricName) {
+                return when {
+                    metric.has("intValue") -> metric.optInt("intValue")
+                    metric.has("floatValue") -> metric.optDouble("floatValue").roundToInt()
+                    else -> null
+                }
+            }
+        }
+        return null
+    }
+
+    private fun JSONObject.hasSegmentActivity(activity: String): Boolean {
+        val segments = optJSONArray("segment") ?: return false
+        for (index in 0 until segments.length()) {
+            if (segments.optJSONObject(index)?.optString("fitnessActivity") == activity) return true
+        }
+        return false
     }
 
     private fun parseWorkoutTime(raw: String): LocalDateTime? =
@@ -370,11 +369,12 @@ internal object ActivityDataImporter {
 
     private data class WorkoutKey(val title: String, val startTime: String, val endTime: String)
     private data class StepCandidate(val priority: Int, val source: String, val days: Map<LocalDate, Int>)
-    private data class SleepCandidate(val priority: Int, val source: String, val days: Map<LocalDate, Long>)
+    private data class SleepCandidate(val priority: Int, val source: String, val days: Map<LocalDate, SleepDay>)
+    private data class SleepDay(val sleepSeconds: Long, val wakeUpSeconds: Long?)
 
     private sealed interface ParsedAllData {
         data class Steps(val source: String, val days: Map<LocalDate, Int>) : ParsedAllData
-        data class Sleep(val source: String, val days: Map<LocalDate, Long>) : ParsedAllData
+        data class Sleep(val source: String, val days: Map<LocalDate, SleepDay>) : ParsedAllData
     }
 }
 
@@ -383,13 +383,4 @@ private fun secondsToDuration(seconds: Long): String {
     val minutes = (seconds % 3600) / 60
     val secs = seconds % 60
     return "%02d:%02d:%02d".format(Locale.US, hours, minutes, secs)
-}
-
-private fun formatNumber(value: Double): String {
-    val rounded = (value * 100.0).roundToInt() / 100.0
-    return if (rounded % 1.0 == 0.0) {
-        rounded.toInt().toString()
-    } else {
-        "%.2f".format(Locale.US, rounded).trimEnd('0').trimEnd('.')
-    }
 }

@@ -21,16 +21,23 @@ internal data class RelatedTrait(
     val correlation: Double,
 )
 
+private data class GradedSample(
+    val date: LocalDate,
+    val value: Double,
+    val grade: Double,
+)
+
 internal fun buildEntryInsights(entries: List<QuantityEntry>, days: List<JournalDay>): List<EntryInsight> {
     val sortedEntries = entries.sortedBy { it.name.lowercase() }
     return sortedEntries.map { entry ->
         val samples = days.mapNotNull { day ->
+            val grade = day.grade ?: return@mapNotNull null
             parseQuantityValue(entry.unit, day.values[entry.columnKey])?.let { value ->
-                day.date to value
+                GradedSample(day.date, value, grade.toDouble())
             }
-        }.sortedBy { it.first }
-        val values = samples.map { it.second }
-        val grades = samples.map { dayGradeFor(days, it.first) }
+        }.sortedBy { it.date }
+        val values = samples.map { it.value }
+        val grades = samples.map { it.grade }
         val mean = values.meanOrNull()
         val stdDev = values.standardDeviationOrNull()
         val normalized = if (mean != null && stdDev != null && stdDev != 0.0) {
@@ -44,14 +51,14 @@ internal fun buildEntryInsights(entries: List<QuantityEntry>, days: List<Journal
             null
         }
         val half = samples.size / 2
-        val sortedByValue = samples.withIndex().sortedBy { it.value.second }
+        val sortedByValue = samples.withIndex().sortedBy { it.value.value }
         val lowHalfAverage = if (samples.size >= 5) {
-            sortedByValue.take(half).map { dayGradeFor(days, it.value.first) }.averageOrNull()
+            sortedByValue.take(half).map { it.value.grade }.averageOrNull()
         } else {
             null
         }
         val highHalfAverage = if (samples.size >= 5) {
-            sortedByValue.takeLast(half).map { dayGradeFor(days, it.value.first) }.averageOrNull()
+            sortedByValue.takeLast(half).map { it.value.grade }.averageOrNull()
         } else {
             null
         }
@@ -64,8 +71,8 @@ internal fun buildEntryInsights(entries: List<QuantityEntry>, days: List<Journal
             standardDeviation = stdDev,
             lowHalfAverageGrade = lowHalfAverage,
             highHalfAverageGrade = highHalfAverage,
-            latestDate = samples.lastOrNull()?.first,
-            latestValue = samples.lastOrNull()?.second,
+            latestDate = samples.lastOrNull()?.date,
+            latestValue = samples.lastOrNull()?.value,
         )
     }
 }
@@ -89,10 +96,6 @@ internal fun buildRelatedTraitCorrelations(
         }
         .sortedByDescending { kotlin.math.abs(it.correlation) }
         .toList()
-}
-
-private fun dayGradeFor(days: List<JournalDay>, date: LocalDate): Double {
-    return days.firstOrNull { it.date == date }?.grade?.toDouble() ?: 3.0
 }
 
 internal fun parseQuantityValue(unit: String, raw: String?): Double? {

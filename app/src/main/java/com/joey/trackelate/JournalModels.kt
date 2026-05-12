@@ -13,7 +13,7 @@ internal data class QuantityEntry(
 
 internal data class JournalDay(
     val date: LocalDate,
-    val grade: Int = 3,
+    val grade: Int? = null,
     val description: String = "",
     val values: Map<String, String?> = emptyMap(),
 )

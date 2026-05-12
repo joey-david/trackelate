@@ -449,14 +449,15 @@ private fun TrackelateCalendar(
                     val isCurrentMonth = YearMonth.from(date) == month
                     val isSelected = date == selectedDate
                     val isFuture = date.isAfter(LocalDate.now())
-                    val grade = day?.grade ?: 3
+                    val grade = day?.grade
                     val background = when {
                         isFuture -> MaterialTheme.colorScheme.background
-                        day == null -> MaterialTheme.colorScheme.background
+                        grade == null -> MaterialTheme.colorScheme.background
                         else -> gradeColor(grade)
                     }
                     val contentColor = when {
                         isFuture -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.34f)
+                        grade == null -> MaterialTheme.colorScheme.onSurface
                         grade >= 4 -> Color.Black
                         else -> Color.White
                     }
@@ -482,9 +483,9 @@ private fun TrackelateCalendar(
                             color = labelColor,
                         )
                         Text(
-                            text = if (day != null) gradeLabel(day.grade) else " ",
+                            text = grade?.let(::gradeLabel) ?: " ",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (day != null) contentColor else labelColor,
+                            color = if (grade != null) contentColor else labelColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -555,7 +556,7 @@ private fun TrackelateDayDetails(
 }
 
 @Composable
-private fun GradePickerFlat(selected: Int, onSelect: (Int) -> Unit) {
+private fun GradePickerFlat(selected: Int?, onSelect: (Int) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = "Mood grade",
@@ -586,7 +587,7 @@ private fun GradePickerFlat(selected: Int, onSelect: (Int) -> Unit) {
             }
         }
         Text(
-            text = gradeLabel(selected),
+            text = selected?.let(::gradeLabel) ?: "ungraded",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -594,15 +595,15 @@ private fun GradePickerFlat(selected: Int, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun GradeBadge(grade: Int) {
+private fun GradeBadge(grade: Int?) {
     Surface(
         shape = RectangleShape,
-        color = gradeColor(grade),
-        contentColor = if (grade >= 4) Color.Black else Color.White,
+        color = grade?.let(::gradeColor) ?: MaterialTheme.colorScheme.surface,
+        contentColor = if (grade != null && grade >= 4) Color.Black else MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)),
     ) {
         Text(
-            text = "$grade · ${gradeLabel(grade)}",
+            text = grade?.let { "$it · ${gradeLabel(it)}" } ?: "ungraded",
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
