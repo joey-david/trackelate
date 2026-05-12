@@ -35,12 +35,18 @@ internal class CsvJournalRepository(context: Context) {
             changed = true
         }
 
-        if (!prefs.getBoolean(KEY_CLEARED_IMPORTED_NEUTRAL_GRADES, false)) {
-            days.replaceAll { day ->
-                if (day.date.isBefore(IMPORTED_NEUTRAL_GRADE_CUTOFF)) day.copy(grade = null) else day
+        if (!prefs.getBoolean(KEY_CLEARED_PRE_MAY_GRADES_V2, false)) {
+            val hasPreCutoffDays = days.any { it.date.isBefore(PRE_MAY_GRADE_CLEAR_CUTOFF) }
+            val hasGradesToClear = days.any { it.date.isBefore(PRE_MAY_GRADE_CLEAR_CUTOFF) && it.grade != null }
+            if (hasGradesToClear) {
+                days.replaceAll { day ->
+                    if (day.date.isBefore(PRE_MAY_GRADE_CLEAR_CUTOFF)) day.copy(grade = null) else day
+                }
+                changed = true
             }
-            prefs.edit().putBoolean(KEY_CLEARED_IMPORTED_NEUTRAL_GRADES, true).apply()
-            changed = true
+            if (hasPreCutoffDays) {
+                prefs.edit().putBoolean(KEY_CLEARED_PRE_MAY_GRADES_V2, true).apply()
+            }
         }
 
         val snapshot = JournalSnapshot(
@@ -508,9 +514,9 @@ internal class CsvJournalRepository(context: Context) {
         private const val SETTINGS_FILE = "journal_settings.csv"
         private const val PREFS_NAME = "trackelate_settings"
         private const val KEY_NOTIFICATION_TIME = "notification_time"
-        private const val KEY_CLEARED_IMPORTED_NEUTRAL_GRADES = "cleared_imported_neutral_grades_before_2026_05_01"
+        private const val KEY_CLEARED_PRE_MAY_GRADES_V2 = "cleared_pre_may_grades_2026_05_01_v2"
         private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-        private val IMPORTED_NEUTRAL_GRADE_CUTOFF: LocalDate = LocalDate.of(2026, 5, 1)
+        private val PRE_MAY_GRADE_CLEAR_CUTOFF: LocalDate = LocalDate.of(2026, 5, 1)
         private val DEFAULT_ENTRIES = listOf(
             SeedEntry("number of steps", "dimensionless"),
             SeedEntry("time slept previous night", "time"),
