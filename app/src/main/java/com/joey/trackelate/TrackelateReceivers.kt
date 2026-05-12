@@ -10,8 +10,13 @@ internal class JournalReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         when (intent?.action) {
             ACTION_OPEN_GRADING -> handleOpenGrading(context, intent)
-            else -> NotificationScheduler.showNotification(context)
+            else -> handleShowReminder(context)
         }
+    }
+
+    private fun handleShowReminder(context: Context) {
+        NotificationScheduler.showNotification(context)
+        rescheduleReminder(context)
     }
 
     private fun handleOpenGrading(context: Context, intent: Intent) {
@@ -29,10 +34,14 @@ internal class JournalReminderReceiver : BroadcastReceiver() {
 
 internal class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        val snapshot = runCatching { CsvJournalRepository(context).loadSnapshot() }.getOrNull()
-        val time = snapshot?.notificationTime ?: LocalTime.of(21, 30)
-        if (isAllowedReminderTime(time)) {
-            NotificationScheduler.scheduleDaily(context, time)
-        }
+        rescheduleReminder(context)
+    }
+}
+
+private fun rescheduleReminder(context: Context) {
+    val snapshot = runCatching { CsvJournalRepository(context).loadSnapshot() }.getOrNull()
+    val time = snapshot?.notificationTime ?: LocalTime.of(21, 30)
+    if (isAllowedReminderTime(time)) {
+        NotificationScheduler.scheduleDaily(context, time)
     }
 }

@@ -134,6 +134,12 @@ internal fun TrackelateApp(
         }
     }
 
+    LaunchedEffect(state.loading, state.notificationTime) {
+        if (!state.loading && isAllowedReminderTime(state.notificationTime)) {
+            NotificationScheduler.scheduleDaily(context, state.notificationTime)
+        }
+    }
+
     TrackelateTheme {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -212,7 +218,10 @@ internal fun TrackelateApp(
                 showReminderTimeDialog = false
                 viewModel.setNotificationTime(time)
                 if (isAllowedReminderTime(time)) {
-                    NotificationScheduler.scheduleDaily(context, time)
+                    val exactAlarmScheduled = NotificationScheduler.scheduleDaily(context, time)
+                    if (!exactAlarmScheduled) {
+                        NotificationScheduler.openExactAlarmSettings(context)
+                    }
                 }
             },
         )
