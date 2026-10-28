@@ -1,4 +1,5 @@
 <resources>
-    <color name="tracker_green">#315C43</color>
-    <color name="tracker_sand">#F4F1EA</color>
+    <color name="widget_surface">#F2FFFCF8</color>
+    <color name="widget_ink">#191611</color>
+    <color name="widget_ink_muted">#5F5348</color>
 </resources>

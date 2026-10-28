@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity() {
         val date = getStringExtra(EXTRA_TARGET_DATE)?.let {
             runCatching { LocalDate.parse(it) }.getOrNull()
         } ?: LocalDate.now()
+        NotificationScheduler.markAcknowledged(this@MainActivity, date)
+        NotificationScheduler.dismiss(this@MainActivity)
         return NotificationLaunchTarget(date)
     }
 }

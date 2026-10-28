@@ -35,7 +35,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun AnalyticsPage(state: JournalUiState) {
+internal fun AnalyticsPage(state: JournalUiState, onOpenDate: (java.time.LocalDate) -> Unit) {
     val insights = remember(state.entries, state.days) {
         buildEntryInsights(state.entries, state.days)
     }
@@ -52,6 +52,18 @@ internal fun AnalyticsPage(state: JournalUiState) {
             Text(
                 text = "Analytics",
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            MoodOverview(state.days, onOpenDate)
+        }
+
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                text = "Tracked quantities",
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
         }

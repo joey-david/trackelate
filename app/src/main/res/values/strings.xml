@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">trackelate</string>
+    <string name="widget_description">This month\'s moods, your streak, and one-tap grading for today.</string>
 </resources>

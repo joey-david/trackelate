@@ -16,7 +16,16 @@ internal class CsvJournalRepository(context: Context) {
     private val settingsFile = File(filesDir, SETTINGS_FILE)
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun loadSnapshot(): JournalSnapshot {
+    fun loadSnapshot(): JournalSnapshot = synchronized(LOCK) { loadSnapshotLocked() }
+
+    /** Read-modify-write used by notifications and widgets while the app may be closed. */
+    fun edit(transform: (JournalSnapshot) -> JournalSnapshot): JournalSnapshot = synchronized(LOCK) {
+        val next = transform(loadSnapshotLocked())
+        saveSnapshot(next)
+        next
+    }
+
+    private fun loadSnapshotLocked(): JournalSnapshot {
         ensureFiles()
 
         var entries = readEntries()
@@ -61,7 +70,7 @@ internal class CsvJournalRepository(context: Context) {
         return snapshot
     }
 
-    fun saveSnapshot(snapshot: JournalSnapshot) {
+    fun saveSnapshot(snapshot: JournalSnapshot) = synchronized(LOCK) {
         ensureFiles()
 
         writeEntries(snapshot.entries.sortedBy { it.order })
@@ -509,6 +518,7 @@ internal class CsvJournalRepository(context: Context) {
     }
 
     companion object {
+        private val LOCK = Any()
         private const val ENTRIES_FILE = "journal_entries.csv"
         private const val DAYS_FILE = "journal_days.csv"
         private const val SETTINGS_FILE = "journal_settings.csv"

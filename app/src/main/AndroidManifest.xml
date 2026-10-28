@@ -27,6 +27,17 @@
             android:name=".JournalReminderReceiver"
             android:exported="false" />
         <receiver
+            android:name=".MoodWidgetProvider"
+            android:exported="false"
+            android:label="Trackelate mood">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mood_widget_info" />
+        </receiver>
+        <receiver
             android:name=".BootReceiver"
             android:exported="false">
             <intent-filter>

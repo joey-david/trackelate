@@ -214,7 +214,14 @@ internal fun TrackelateApp(
                                 onLaunchTargetConsumed()
                             },
                         )
-                        else -> AnalyticsPage(state)
+                        else -> AnalyticsPage(
+                            state = state,
+                            onOpenDate = { date ->
+                                visibleMonth.value = YearMonth.from(date)
+                                viewModel.selectDate(date)
+                                scope.launch { pagerState.animateScrollToPage(0) }
+                            },
+                        )
                     }
                 }
             }

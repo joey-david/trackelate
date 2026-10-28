@@ -19,6 +19,14 @@ internal class JournalViewModel(application: Application) : AndroidViewModel(app
     val state: StateFlow<JournalUiState> = _state.asStateFlow()
 
     init {
+        reload()
+        viewModelScope.launch {
+            JournalChanges.changes.collect { reload() }
+        }
+    }
+
+    /** Re-reads the CSVs, e.g. after a grade was logged from the notification or widget. */
+    fun reload() {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { repository.loadSnapshot() }
                 .onSuccess { snapshot ->
@@ -136,6 +144,7 @@ internal class JournalViewModel(application: Application) : AndroidViewModel(app
                 val current = repository.loadSnapshot()
                 val (next, summary) = repository.importActivityData(current, imported)
                 repository.saveSnapshot(next)
+                MoodWidgetProvider.updateAll(app)
                 next.toUiState(_state.value).copy(
                     message = buildImportMessage(summary),
                 )
@@ -147,12 +156,18 @@ internal class JournalViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
-private fun commitChange(transform: (JournalSnapshot) -> JournalSnapshot) {
+    private fun commitChange(transform: (JournalSnapshot) -> JournalSnapshot) {
         val snapshot = _state.value.toSnapshot()
         val next = transform(snapshot)
         _state.value = next.toUiState(_state.value)
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { repository.saveSnapshot(next) }
+                .onSuccess {
+                    if (next.days.firstOrNull { it.date == LocalDate.now() }?.grade != null) {
+                        NotificationScheduler.markAcknowledged(getApplication(), LocalDate.now())
+                    }
+                    MoodWidgetProvider.updateAll(getApplication())
+                }
                 .onFailure { error ->
                     _state.value = _state.value.copy(message = error.message ?: "Save failed")
                 }

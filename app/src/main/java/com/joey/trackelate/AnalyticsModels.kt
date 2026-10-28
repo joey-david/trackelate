@@ -154,3 +154,64 @@ private fun pearson(x: List<Double>, y: List<Double>): Double? {
     val denominator = sqrt(sumSquaresX * sumSquaresY)
     return if (denominator == 0.0) null else numerator / denominator
 }
+
+internal data class MoodSummary(
+    val streak: Int,
+    val longestStreak: Int,
+    val gradedDays: Int,
+    val last30Average: Double?,
+    val previous30Average: Double?,
+    val weekdayAverages: Map<java.time.DayOfWeek, Double>,
+    val bestWeekday: java.time.DayOfWeek?,
+    val trend: List<Pair<LocalDate, Double>>,
+)
+
+/** Consecutive graded days ending today (or yesterday, so tonight's entry isn't required yet). */
+internal fun moodStreak(days: List<JournalDay>, today: LocalDate = LocalDate.now()): Int {
+    val graded = days.filter { it.grade != null }.mapTo(HashSet()) { it.date }
+    var cursor = if (today in graded) today else today.minusDays(1)
+    var streak = 0
+    while (cursor in graded) {
+        streak += 1
+        cursor = cursor.minusDays(1)
+    }
+    return streak
+}
+
+internal fun buildMoodSummary(days: List<JournalDay>, today: LocalDate = LocalDate.now()): MoodSummary {
+    val graded = days.filter { it.grade != null && !it.date.isAfter(today) }.sortedBy { it.date }
+    var longest = 0
+    var run = 0
+    var previous: LocalDate? = null
+    graded.forEach { day ->
+        run = if (previous != null && previous!!.plusDays(1) == day.date) run + 1 else 1
+        longest = maxOf(longest, run)
+        previous = day.date
+    }
+    fun averageBetween(fromInclusive: LocalDate, toExclusive: LocalDate): Double? =
+        graded.filter { !it.date.isBefore(fromInclusive) && it.date.isBefore(toExclusive) }
+            .mapNotNull { it.grade?.toDouble() }
+            .averageOrNull()
+    val weekday = graded.groupBy { it.date.dayOfWeek }
+        .filterValues { it.size >= 2 }
+        .mapValues { (_, list) -> list.mapNotNull { it.grade?.toDouble() }.average() }
+    val gradeByDate = graded.associate { it.date to it.grade!!.toDouble() }
+    val trendStart = today.minusDays(89)
+    val trend = generateSequence(trendStart) { it.plusDays(1) }
+        .takeWhile { !it.isAfter(today) }
+        .mapNotNull { date ->
+            val window = (0L..6L).mapNotNull { gradeByDate[date.minusDays(it)] }
+            if (window.isEmpty() || gradeByDate[date] == null) null else date to window.average()
+        }
+        .toList()
+    return MoodSummary(
+        streak = moodStreak(days, today),
+        longestStreak = longest,
+        gradedDays = graded.size,
+        last30Average = averageBetween(today.minusDays(29), today.plusDays(1)),
+        previous30Average = averageBetween(today.minusDays(59), today.minusDays(29)),
+        weekdayAverages = weekday,
+        bestWeekday = weekday.maxByOrNull { it.value }?.key,
+        trend = trend,
+    )
+}

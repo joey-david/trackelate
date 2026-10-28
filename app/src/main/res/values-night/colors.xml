@@ -1,0 +1,5 @@
+<resources>
+    <color name="widget_surface">#F20A0A0A</color>
+    <color name="widget_ink">#EDE6DB</color>
+    <color name="widget_ink_muted">#B5AA9C</color>
+</resources>

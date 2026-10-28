@@ -2,8 +2,7 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.compose)
 }
 
 val keystoreProperties = Properties().apply {
@@ -21,14 +20,18 @@ val hasReleaseSigning =
 
 android {
     namespace = "com.joey.trackelate"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.joey.trackelate"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.5"
+        targetSdk = 36
+        versionCode = 6
+        versionName = "2.0.0"
+    }
+
+    androidResources {
+        localeFilters += listOf("en")
     }
 
     signingConfigs {
@@ -47,7 +50,8 @@ android {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -60,50 +64,42 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
-        buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
     }
 
     packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // Compressed dex keeps the download small; the app is tiny enough that install-time extraction is free.
+        dex {
+            useLegacyPackaging = true
         }
+        resources {
+            excludes += listOf(
+                "/META-INF/**",
+                "/kotlin/**",
+                "DebugProbesKt.bin",
+                "/*.properties",
+            )
+        }
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 }
 
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.ui)
-    implementation(libs.compose.ui.text)
-    implementation(libs.compose.ui.graphics)
-    implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.foundation)
-    implementation(libs.compose.runtime)
     implementation(libs.compose.material.icons)
-    implementation(libs.google.material)
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.palette.ktx)
-    implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
-    ksp(libs.androidx.room.compiler)
     debugImplementation(libs.compose.ui.tooling)
-    debugImplementation(libs.compose.ui.test.manifest)
+    testImplementation(libs.junit)
 }
